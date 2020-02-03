@@ -4,7 +4,7 @@ using LinearAlgebra
 background = [0,0,0]
 defaultColor = [0,0,0]
 
-toByte = x -> trunc(UInt8, min(255, x*255))
+toByte(x) = trunc(UInt8, min(255, x * 255))
 
 struct Ray
     start::Array{Float64,1}
@@ -18,43 +18,49 @@ struct Surface
     roughness::Float64
 end
 
-shiny = Surface(p -> [1,1,1], p -> [0.5,0.5,0.5], p -> 0.6, 50.0)
+shiny = Surface(
+    p -> [1,1,1],
+    p -> [0.5,0.5,0.5],
+    p -> 0.6,
+    50.0
+)
+
 checkerboard = Surface(
     p -> (floor(p[3]) + floor(p[1])) % 2 != 0 ? [1,1,1] : [0,0,0],
     p -> [1,1,1],
     p -> (floor(p[3]) + floor(p[1])) % 2 != 0 ? 0.1 : 0.7,
     150.0
-) 
+)
 
 struct Camera
-    pos::Array{Float64,1}
+    pos    ::Array{Float64,1}
     forward::Array{Float64,1}
-    up::Array{Float64,1}
-    right::Array{Float64,1}
+    up     ::Array{Float64,1}
+    right  ::Array{Float64,1}
 end
 
 function createCamera(pos, lookat)
     forward = normalize(lookat - pos)
-    down = [0,-1,0]
-    right = 1.5*normalize(cross(forward, down))
-    up = 1.5*normalize(cross(forward, right))
-    return Camera(pos,forward,up,right)
+    down = [0, -1, 0]
+    right = 1.5 * normalize(cross(forward, down))
+    up = 1.5 * normalize(cross(forward, right))
+    return Camera(pos, forward, up, right)
 end
 
 struct Light
-    pos::Array{Float64,1}
+    pos  ::Array{Float64,1}
     color::Array{Float64,1}
 end
 
 struct Plane
-    norm::Array{Float64,1}
-    offset::Float64
+    norm   ::Array{Float64,1}
+    offset ::Float64
     surface::Surface
 end
 
 struct Sphere
-    center::Array{Float64,1}
-    radius::Float64
+    center ::Array{Float64,1}
+    radius ::Float64
     surface::Surface
 end
 
@@ -75,7 +81,7 @@ end
 function intersect(thing::Plane, ray::Ray)
     denom = dot(thing.norm, ray.dir)
     if denom > 0
-        return Nothing
+        return Nothing  # might need to be "nothing"
     else
         d = (dot(thing.norm, ray.start) + thing.offset) / (-denom)
         return ISect(thing, ray, d)
@@ -107,22 +113,22 @@ function normal(thing::Sphere, pos)
 end
 
 struct Viewport
-    width::Int
+    width ::Int
     height::Int
 end
 
-function recenterX(view::Viewport,x)
-    return (x - view.width / 2) / (2*view.width)
+function recenterX(view::Viewport, x)
+    return (x - view.width / 2) / (2 * view.width)
 end
 
-function recenterY(view::Viewport,y)
+function recenterY(view::Viewport, y)
     return -(y - view.height/2) / (2*view.height)
 end
 
 function getPoint(view::Viewport,camera::Camera,x,y)
-    return normalize(camera.forward+
-        recenterX(view,x)*camera.right+
-        recenterY(view,y)*camera.up)
+    return normalize(camera.forward +
+        recenterX(view, x)*camera.right +
+        recenterY(view, y)*camera.up)
 end
 
 function getNaturalColor(thing::Thing, pos, n, rd, scene::Scene)
@@ -130,22 +136,22 @@ function getNaturalColor(thing::Thing, pos, n, rd, scene::Scene)
     for light = scene.lights
         ldis = light.pos - pos
         livec = normalize(ldis)
-        neatIsect = testRay(Ray(pos,livec), scene)
+        neatIsect = testRay(Ray(pos, livec), scene)
         isInShadow = !((neatIsect > norm(ldis)) || neatIsect == 0)
         if !isInShadow
             illum = dot(livec, n)
-            lcolor = illum > 0 ? illum*light.color : [0,0,0]
+            lcolor = illum > 0 ? illum * light.color : [0,0,0]
             specular = dot(livec, normalize(rd))
-            scolor = specular > 0 ? (specular^thing.surface.roughness)*light.color : [0,0,0]
+            scolor = specular > 0 ? (specular^thing.surface.roughness) * light.color : [0,0,0]
             ret = ret + map(*,thing.surface.diffuse(pos), lcolor)+
-                        map(*,thing.surface.specular(pos),scolor)
+                        map(*,thing.surface.specular(pos), scolor)
         end
     end
     return ret
 end
 
 function getReflectionColor(thing::Thing, pos, n, rd, scene::Scene, depth)
-    return thing.surface.reflect(pos)*traceRay(Ray(pos,rd), scene, depth+1)
+    return thing.surface.reflect(pos)*traceRay(Ray(pos, rd), scene, depth+1)
 end
 
 global maxDepth = 5
@@ -154,10 +160,10 @@ function shade(isect::ISect, scene::Scene, depth)
     d = isect.ray.dir
     pos = isect.dist*isect.ray.dir + isect.ray.start
     n = normal(isect.thing, pos)
-    reflectDir = d - 2*dot(n,d)*n
+    reflectDir = d - 2*dot(n, d)*n
     ret = defaultColor + getNaturalColor(isect.thing, pos, n, reflectDir, scene)
     if depth >= maxDepth
-        return ret + [0.5,0.5,0.5]
+        return ret + [0.5, 0.5, 0.5]
     end
     return ret + getReflectionColor(isect.thing, pos + (0.001*reflectDir), n, reflectDir, scene, depth)
 end
@@ -171,7 +177,7 @@ function firstIntersection(ray::Ray, scene::Scene)
         return Nothing
     end
     return first(vs)
-end 
+end
 
 function testRay(ray::Ray, scene::Scene)
     isect = firstIntersection(ray, scene)
@@ -193,11 +199,11 @@ function render(view::Viewport, scene::Scene)
     bitmap = zeros(UInt8, (view.width, view.height, 3))
     for y = 1:view.height
         for x = 1:view.width
-            c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera,x-1,y-1)), scene, 0)
-            bitmap[x,y,:] = map(toByte,c)
+            c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
+            bitmap[x,y,:] = map(toByte, c)
         end
     end
-    return bitmap          
+    return bitmap
 end
 
 function writePPM(filename, bitmap)
@@ -216,7 +222,7 @@ function writePPM(filename, bitmap)
 end
 
 function simpleSurface(diffuse, reflect, roughness)
-    return Surface(p -> diffuse, p -> [0.5,0.5,0.5], p -> reflect, 200.0*roughness)
+    return Surface(p -> diffuse, p -> [0.5, 0.5, 0.5], p -> reflect, 200.0*roughness)
 end
 
 function parseFile(file)
@@ -278,16 +284,16 @@ if length(ARGS) == 2
     println("Reading $(ARGS[1])\nOutput $(ARGS[2])")
     r = parseFile(ARGS[1])
     if r != Nothing
-        view,scene = r
+        view, scene = r
         println("""Rendering $(view.width)x$(view.height) scene
                    Things: $(length(scene.things))
                    Lights: $(length(scene.lights))""")
         time = @elapsed bmp = render(view, scene)
         println("Done $(time) seconds")
-        writePPM(ARGS[2],bmp)
+        writePPM(ARGS[2], bmp)
     end
 elseif length(ARGS) == 1 && ARGS[1] == "--demo"
-    bmp = render(Viewport(400,400), demoScene)
+    bmp = render(Viewport(400, 400), demoScene)
     writePPM("demo.ppm", bmp)
 else
     println("Usage: raytracer [scene file] [output ppm]")
