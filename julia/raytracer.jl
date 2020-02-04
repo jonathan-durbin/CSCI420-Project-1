@@ -1,4 +1,14 @@
 # Based on https://blogs.msdn.microsoft.com/lukeh/2007/04/03/a-ray-tracer-in-c3-0/
+
+module RayTracer
+
+export
+    Scene, Plane, Sphere, Light, Viewport,
+    checkerboard, shiny,
+    createCamera, parseFile, writePPM,
+    render
+
+
 using LinearAlgebra
 
 background = [0,0,0]
@@ -265,36 +275,44 @@ function parseFile(file)
     return (view, Scene(things, lights, camera))
 end
 
-demoScene = Scene(
-    [
-        Plane([0,1,0], 0, checkerboard),
-        Sphere([0,1,0], 1, shiny),
-        Sphere([-1,0.5,1.5], 0.5, shiny)
-    ],
-    [
-        Light([ -2,2.5,   0], [.49,.07,.07 ]),
-        Light([1.5,2.5, 1.5], [.07,.07,.49 ]),
-        Light([1.5,2.5,-1.5], [.07,.49,.071]),
-        Light([  0,3.5,   0], [.21,.21,.35 ])
-    ],
-    createCamera([3,2,4],[-1,0.5,0])
-)
+end  # module RayTracer
 
-if length(ARGS) == 2
-    println("Reading $(ARGS[1])\nOutput $(ARGS[2])")
-    r = parseFile(ARGS[1])
-    if r != Nothing
-        view, scene = r
-        println("""Rendering $(view.width)x$(view.height) scene
-                   Things: $(length(scene.things))
-                   Lights: $(length(scene.lights))""")
-        time = @elapsed bmp = render(view, scene)
-        println("Done $(time) seconds")
-        writePPM(ARGS[2], bmp)
+
+using .RayTracer
+
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    demoScene = Scene(
+        [
+            Plane([0, 1, 0], 0, checkerboard),
+            Sphere([0,1,0], 1, shiny),
+            Sphere([-1,0.5,1.5], 0.5, shiny)
+        ],
+        [
+            Light([ -2,2.5,   0], [.49,.07,.07 ]),
+            Light([1.5,2.5, 1.5], [.07,.07,.49 ]),
+            Light([1.5,2.5,-1.5], [.07,.49,.071]),
+            Light([  0,3.5,   0], [.21,.21,.35 ])
+        ],
+        createCamera([3,2,4],[-1,0.5,0])
+    )
+
+    if length(ARGS) == 2
+        println("Reading $(ARGS[1])\nOutput $(ARGS[2])")
+        r = parseFile(ARGS[1])
+        if r != Nothing
+            view, scene = r
+            println("""Rendering $(view.width)x$(view.height) scene
+                    Things: $(length(scene.things))
+                    Lights: $(length(scene.lights))""")
+            time = @elapsed bmp = render(view, scene)
+            println("Done $(time) seconds")
+            writePPM(ARGS[2], bmp)
+        end
+    elseif length(ARGS) == 1 && ARGS[1] == "--demo"
+        bmp = render(Viewport(400, 400), demoScene)
+        writePPM("demo.ppm", bmp)
+    else
+        println("Usage: raytracer [scene file] [output ppm]")
     end
-elseif length(ARGS) == 1 && ARGS[1] == "--demo"
-    bmp = render(Viewport(400, 400), demoScene)
-    writePPM("demo.ppm", bmp)
-else
-    println("Usage: raytracer [scene file] [output ppm]")
 end
