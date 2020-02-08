@@ -22,18 +22,16 @@ NUMBYTES = 500
 # read(f, 30) -> read 30 bytes of f
 
 open(FILE, "r") do io
-    h = reinterpret(UInt8, [hash(read(io, String), zero(UInt))])
     # converts the UInt64 hash to an array of UInt8 partial hashes.
-    # the server will have to know to connect the first 8 bytes of file-sending messages to form the file hash
-    @show h
+    h = reinterpret(UInt8, [hash(read(io, String))])
 
+    # the server will have to know to connect the first 8 bytes of file-sending messages to form the file hash
     for server in SERVER_LIST
         seekstart(io)
         bs = read(io, NUMBYTES)
         while length(bs) > 0
             # send 500-ish byte packets, adding the file hash (8 bytes) to the beginning of each message
             send(sock, server[:ipaddr], server[:port], cat(h, bs, dims=1))
-            @show String(bs)
             bs = read(io, NUMBYTES)
         end
     end
