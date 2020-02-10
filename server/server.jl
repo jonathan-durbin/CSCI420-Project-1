@@ -1,7 +1,7 @@
 using Sockets
 
-# include("julia/raytracer.jl")
-# using .RayTracer
+include("../julia/raytracer.jl")
+using .RayTracer
 
 sock = UDPSocket()
 bind(sock, ip"127.0.0.1", 3000)
@@ -18,6 +18,7 @@ while h != hash(scene)
 end
 
 println("Got the whole file!")
-@show scene
+scenebuffer = IOBuffer(scene)
+
 
 close(sock)
