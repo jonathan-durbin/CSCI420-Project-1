@@ -2,7 +2,7 @@ module Select
 
 using Nullables
 
-export @select
+export @select, select
 
 # =========================================================================================
 # Custom concurrency primitives needed to support `@select`
