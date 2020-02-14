@@ -23,9 +23,9 @@ function receive_from(
 end
 
 
-function timeout(n)
+function timeout(n::Int, v::Bool = false)
     sleep(n)
-    println("Timed out")
+    v && println("Timed out")
     return false
 end
 
