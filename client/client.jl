@@ -10,11 +10,25 @@ using .RayTracer
 function receive_from(
     socket::UDPSocket,
     expected_server::Tuple{IPv4, Int64},
-    recv_channels::Dict{Tuple{IPv4,Int64},Channel{Any}}
+    recv_channels::Dict{Tuple{IPv4,Int64},Channel{Any}},
+    error_code::Array{UInt8,1},
+    n::Int
     )
-    ip, r = recvfrom(socket)
-    ip = (ip.host, ip.port)
-    if ip != expected_server  # if we receive from a server that we haven't been talking to
+    a = @async recvfrom(socket)
+    b = @async timeout(n)  # if no response in n seconds, then return the error code
+    @select begin
+        a |> resp => begin
+            ip, r = (resp[1].host, resp[1].port), resp[2]
+        end
+        b => begin
+            println("receive_from timed out waiting for $expected_server for $n seconds.")
+            ip, r = (ip"127.0.0.1", 9055), error_code
+        end
+    end
+    # if we receive (successfully) from a server that we haven't been talking to,
+    # then put the data in the channel for the corresponding server,
+    # and try to take from the channel for the expected server
+    if ip != expected_server && r != error_code
         put!(recv_channels[ip], r)
         r = take!(recv_channels[expected_server])
         ip = expected_server
@@ -63,7 +77,7 @@ function handle(
             end
         end
         send(socket, server[1], server[2], confirm)
-        ip, r = receive_from(socket, server, recv_channels)
+        ip, r = receive_from(socket, server, recv_channels, error, 0.5)
         r == confirm ? server_state = states[2] : println("Error while sending file to $server, retrying...")
     end
 
@@ -71,18 +85,18 @@ function handle(
         chunk = take!(chunks)
         send(socket, server[1], server[2], reinterpret(UInt8, [chunk.start, chunk.stop]))
 
-        ip, r = receive_from(socket, server, recv_channels)
+        ip, r = receive_from(socket, server, recv_channels, error, 0.5)
         if r == confirm
             server_state = states[3]
         else
             put!(chunks, chunk)
             println("Error while sending job to $server, retrying...")
-            sleep(0.1)
+            sleep(0.1)  # wait some time to give other tasks a chance to take that chunk.
         end
     end
 
     while server_state == states[3]  # processing job
-        ip, r = receive_from(socket, server, recv_channels)
+        ip, r = receive_from(socket, server, recv_channels, error, 0.5)
         if length(r) == chunk.stop - chunk.start  # if the length of what we got is shorter/longer than what we expected
     end
 end
