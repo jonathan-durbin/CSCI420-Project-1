@@ -240,34 +240,32 @@ function parseFile(file)
     things = []
     lights = []
     camera = Nothing
-    open(file, "r") do io
-        for rawl in eachline(file)
-            l = split(rawl,"#")
-            if length(l) == 0
-                continue
-            end
-            ws = split(l[1], " ", keepempty=false)
-            if length(ws) != 0
-                if ws[1] == "#"
-                elseif ws[1] == "sphere"
-                    @assert(length(ws) == 1+9, "sphere requires 9 values, saw $(length(ws)-1):\n\t$(ws)")
-                    vs = map(x -> parse(Float64,x), ws[2:10])
-                    things = [things; Sphere(vs[1:3], vs[4], simpleSurface(vs[5:7],vs[8],vs[9]))]
-                elseif ws[1] == "light"
-                    @assert(length(ws) == 1+6, "light requires 6 values, saw $(length(ws)-1):\n\t$(ws)")
-                    vs = map(x -> parse(Float64,x), ws[2:7])
-                    n = maximum(vs[4:6])
-                    n = n < 1 ? 1 : n
-                    lights = [lights; Light(vs[1:3], vs[4:6]/n)]
-                elseif ws[1] == "camera"
-                    @assert(length(ws) == 1+6, "camera requires 6 values, saw $(length(ws)-1):\n\t$(ws)")
-                    vs = map(x -> parse(Float64,x), ws[2:7])
-                    camera = createCamera(vs[1:3], vs[4:6])
-                elseif ws[1] == "view"
-                    @assert(length(ws) == 1+2, "view requires 2 values, saw $(length(ws)-1):\n\t$(ws)")
-                    vs = map(x -> parse(UInt32,x), ws[2:3])
-                    view = Viewport(vs[1], vs[2])
-                end
+    for rawl in eachline(file)  # now doesn't work if file is just a string
+        l = split(rawl,"#")
+        if length(l) == 0
+            continue
+        end
+        ws = split(l[1], " ", keepempty=false)
+        if length(ws) != 0
+            if ws[1] == "#"
+            elseif ws[1] == "sphere"
+                @assert(length(ws) == 1+9, "sphere requires 9 values, saw $(length(ws)-1):\n\t$(ws)")
+                vs = map(x -> parse(Float64,x), ws[2:10])
+                things = [things; Sphere(vs[1:3], vs[4], simpleSurface(vs[5:7],vs[8],vs[9]))]
+            elseif ws[1] == "light"
+                @assert(length(ws) == 1+6, "light requires 6 values, saw $(length(ws)-1):\n\t$(ws)")
+                vs = map(x -> parse(Float64,x), ws[2:7])
+                n = maximum(vs[4:6])
+                n = n < 1 ? 1 : n
+                lights = [lights; Light(vs[1:3], vs[4:6]/n)]
+            elseif ws[1] == "camera"
+                @assert(length(ws) == 1+6, "camera requires 6 values, saw $(length(ws)-1):\n\t$(ws)")
+                vs = map(x -> parse(Float64,x), ws[2:7])
+                camera = createCamera(vs[1:3], vs[4:6])
+            elseif ws[1] == "view"
+                @assert(length(ws) == 1+2, "view requires 2 values, saw $(length(ws)-1):\n\t$(ws)")
+                vs = map(x -> parse(UInt32,x), ws[2:3])
+                view = Viewport(vs[1], vs[2])
             end
         end
     end
@@ -278,10 +276,8 @@ end
 end  # module RayTracer
 
 
-using .RayTracer
-
-
 if abspath(PROGRAM_FILE) == @__FILE__
+    using .RayTracer
     demoScene = Scene(
         [
             Plane([0, 1, 0], 0, checkerboard),
