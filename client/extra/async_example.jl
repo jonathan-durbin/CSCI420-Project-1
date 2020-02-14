@@ -2,7 +2,7 @@ using Sockets
 include("Select.jl") # From https://github.com/NHDaly/Select.jl/blob/master/src/Select.jl
 using .Select
 
-# written by Ryan Yates, in Networking class.
+# written by Ryan Yates in his Networking class.
 
 function main()
     sock = UDPSocket()
