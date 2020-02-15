@@ -7,10 +7,16 @@ include("../julia/raytracer.jl")
 using .RayTracer
 
 
+struct Server
+    host::IPv4
+    port::Int
+end
+
+
 function receive_from(
     socket::UDPSocket,
-    expected_server::Tuple{IPv4, Int64},
-    recv_channels::Dict{Tuple{IPv4,Int64},Channel{Any}},
+    expected_server::Server,
+    recv_channels::Dict{Server,Channel{Any}},
     error_code::Array{UInt8,1},
     n::Int
     )
@@ -18,22 +24,22 @@ function receive_from(
     b = @async timeout(n)  # if no response in n seconds, then return the error code
     @select begin
         a |> resp => begin
-            ip, r = (resp[1].host, resp[1].port), resp[2]
+            server, r = Server(resp[1].host, resp[1].port), resp[2]
         end
         b => begin
             println("receive_from timed out waiting for $expected_server for $n seconds.")
-            ip, r = (ip"127.0.0.1", 9055), error_code
+            server, r = Server(ip"127.0.0.1", 9055), error_code
         end
     end
     # if we receive (successfully) from a server that we haven't been talking to,
     # then put the data in the channel for the corresponding server,
     # and try to take from the channel for the expected server
-    if ip != expected_server && r != error_code
-        put!(recv_channels[ip], r)
+    if server != expected_server && r != error_code
+        put!(recv_channels[server], r)
         r = take!(recv_channels[expected_server])
-        ip = expected_server
+        server = expected_server  # r is now the data from the server that we expected, so server can be replaced
     end
-    return (ip, r)
+    return (server, r)
 end
 
 
@@ -46,7 +52,7 @@ end
 
 function handle(
     socket::UDPSocket,
-    server::Tuple{IPv4, Int64},
+    server::Server,
     file::String,
     numbytes::Int,
     chunks::Channel,
@@ -72,18 +78,18 @@ function handle(
             bs = read(io, numbytes)
             while length(bs) > 0
                 # send numbytes-byte packets, adding the file hash (8 bytes) to the beginning of each message
-                send(socket, server[1], server[2], cat(h, bs, dims=1))
+                send(socket, server.host, server.port, cat(h, bs, dims=1))
                 bs = read(io, numbytes)
             end
         end
-        send(socket, server[1], server[2], confirm)
+        send(socket, server.host, server.port, confirm)
         ip, r = receive_from(socket, server, recv_channels, error, 0.5)
         r == confirm ? server_state = states[2] : println("Error while sending file to $server, retrying...")
     end
 
     while server_state == states[2]  # waiting for job
         chunk = take!(chunks)
-        send(socket, server[1], server[2], reinterpret(UInt8, [chunk.start, chunk.stop]))
+        send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
 
         ip, r = receive_from(socket, server, recv_channels, error, 0.5)
         if r == confirm
@@ -106,7 +112,7 @@ function main()
     socket = UDPSocket()
     bind(socket, ip"127.0.0.1", 9055)
     server_list = [
-        (ip"127.0.0.1", 5055)
+        Server(ip"127.0.0.1", 5055)
     ]
     file = "client/default.scene"
     numbytes = 500  # Max bytes to send via UDP
@@ -121,7 +127,7 @@ function main()
             put!(ch, chunk)
         end
     end
-    recv_channels = Dict(serv => Channel(1) for serv in server_list)
+    recv_channels = Dict(server => Channel(1) for server in server_list)
 
     tasks = map(server ->
         () -> Task(() -> handle(socket, server, file, numbytes, chunks, recv_channels)),
