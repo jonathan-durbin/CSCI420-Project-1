@@ -144,7 +144,7 @@ function main()
         server_list
     )
     tasklist = [(:take, t()) for t in tasks]
-
+    # TODO: create empty image, update it, know when to break the below loop when the image is finished, write the image ppm file
     while true  # while image is not completed
         i, r = select(tasklist)  # i is index of server_list, r is return value of first function to return
         # depending on the value of r
