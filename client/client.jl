@@ -135,10 +135,14 @@ function main()
     )
     tasklist = [(:take, t()) for t in tasks]
 
-    while true
+    while true  # while image is not completed
         i, r = select(tasklist)  # i is index of server_list, r is return value of first function to return
         # depending on the value of r
-        tasklist[i] = (:take, Task(() -> ))
+        if r == false  # timed out
+            println("Timed out in main execution.")
+        else
+            tasklist[i] = (:take, Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels)))
+        end
     end
 
     close(socket)
