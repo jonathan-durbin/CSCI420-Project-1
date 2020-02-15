@@ -87,8 +87,8 @@ function handle(
         r == confirm ? server_state = states[2] : println("Error while sending file to $server, retrying...")
     end
 
+    chunk = take!(chunks)
     while server_state == states[2]  # waiting for job
-        chunk = take!(chunks)
         send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
 
         ip, r = receive_from(socket, server, recv_channels, error, 0.5)
@@ -101,9 +101,19 @@ function handle(
         end
     end
 
+    r = UInt8[]
     while server_state == states[3]  # processing job
         ip, r = receive_from(socket, server, recv_channels, error, 0.5)
-        if length(r) == chunk.stop - chunk.start  # if the length of what we got is shorter/longer than what we expected
+        if length(r) == chunk.stop - chunk.start + 1  # if the length of what we got is shorter/longer than what we expected
+            send(socket, server.host, server.port, error)
+        else
+            send(socket, server.host, server.port, confirm)
+            server_state = states[4]
+        end
+    end
+
+    if server_state == states[4]  # finished
+        return server, r
     end
 end
 
