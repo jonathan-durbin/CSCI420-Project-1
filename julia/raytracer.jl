@@ -205,13 +205,13 @@ function traceRay(ray::Ray, scene::Scene, depth)
     return shade(isect, scene, depth)
 end
 
-function render(view::Viewport, scene::Scene)
+function render(view::Viewport, scene::Scene, range::UnitRange{Int64} = 1:view.width*view.height)
     bitmap = zeros(UInt8, (view.width, view.height, 3))
-    for y = 1:view.height
-        for x = 1:view.width
-            c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
-            bitmap[x,y,:] = map(toByte, c)
-        end
+    for i = range
+        y = i % view.height + 1
+        x = ceil(Int, i / view.height)
+        c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
+        bitmap[x,y,:] = map(toByte, c)
     end
     return bitmap
 end
@@ -236,11 +236,16 @@ function simpleSurface(diffuse, reflect, roughness)
 end
 
 function parseFile(file)
+    if typeof(file) == String
+        open(file, 'r') do io
+            file = IOBuffer(io)
+        end
+    end
     view = Viewport(600,600)
     things = []
     lights = []
     camera = Nothing
-    for rawl in eachline(file)  # now doesn't work if file is just a string
+    for rawl in eachline(file)
         l = split(rawl,"#")
         if length(l) == 0
             continue

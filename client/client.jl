@@ -148,7 +148,7 @@ function main()
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
 
     view, scene = parseFile(file)
-    final_image = Array{Union{UInt8, Missing}}(missing, view.height, view.width, 3)
+    final_image = Array{Union{UInt8, Missing}}(missing, view.height * view.width, 3)
     N = view.height * view.width  # Total number of pixels in image
 
     chunks = Channel{UnitRange{Int64}}(ceil(Int, N/numpixels)) do ch  # Tracks pixel chunks waiting for from servers
@@ -172,11 +172,12 @@ function main()
             println("Timed out in main execution with server $(r[2]). All retries should already have been attempted.")
         else
             flag, server, chunk, result = r
-            final_image[chunk] = result  # this will not work - TODO: think about how best to define chunk, and how the bytes in result should be ordered.
+            final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
             tasklist[i] = (:take, Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels)))
         end
     end
     close(socket)
+    final_image = reshape(final_image, view.height, view.width, 3)
 
 end
 
