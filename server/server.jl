@@ -43,7 +43,7 @@ function main()
         ip, r = recvfrom(sock)
     end
 
-
+# collect(Iterators.flatten(eachrow(render(view, scene, chunk))))  # this can be directly sent.
 
     close(sock)
 end
