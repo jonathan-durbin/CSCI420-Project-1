@@ -140,6 +140,7 @@ end
 function main()
     socket = UDPSocket()
     bind(socket, ip"127.0.0.1", 9055)
+    # getaddrinfo("D13055"), etc...
     server_list = [
         Server(ip"127.0.0.1", 5055)
     ]
