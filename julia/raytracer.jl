@@ -206,13 +206,24 @@ function traceRay(ray::Ray, scene::Scene, depth)
 end
 
 function render(view::Viewport, scene::Scene, range::UnitRange{Int64} = 1:view.width*view.height)
-    bitmap = zeros(UInt8, (view.width, view.height, 3))
-    for i = range
-        y = i % view.height + 1
-        x = ceil(Int, i / view.height)
-        c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
-        bitmap[x,y,:] = map(toByte, c)
+    if range == 1:view.width*view.height
+        bitmap = zeros(UInt8, (view.width, view.height, 3))
+        default = true
+    else
+        bitmap = zeros(UInt8, (view.width * view.height, 3))
+        default = false
     end
+    for (i, val) = enumerate(range)
+        y = val % view.height + 1
+        x = ceil(Int, val / view.height)
+        c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
+        if default
+            bitmap[x,y,:] = map(toByte, c)
+        else
+            bitmap[i, :] = map(toByte, c)
+        end
+    end
+    # !default && (bitmap = reshape(bitmap, (view.width, view.height, 3)))  # probably don't need this
     return bitmap
 end
 
