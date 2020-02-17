@@ -13,6 +13,13 @@ struct Server
 end
 
 
+function timeout(n::Int, v::Bool = false)
+    sleep(n)
+    v && println("Timed out")
+    return false
+end
+
+
 function receive_from(
     socket::UDPSocket,
     expected_server::Server,
