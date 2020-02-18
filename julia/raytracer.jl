@@ -206,12 +206,12 @@ function traceRay(ray::Ray, scene::Scene, depth)
 end
 
 function render(view::Viewport, scene::Scene, range::UnitRange{Int64} = 1:view.width*view.height)
-    bitmap = zeros(UInt8, (view.width, view.height, 3))
+    bitmap = zeros(UInt8, (range.stop - range.start + 1, 3))
     for i = range
         y = i % view.height + 1
         x = ceil(Int, i / view.height)
         c = traceRay(Ray(scene.camera.pos, getPoint(view,scene.camera, x-1, y-1)), scene, 0)
-        bitmap[x,y,:] = map(toByte, c)
+        bitmap[i,:] = map(toByte, c)
     end
     return bitmap
 end
@@ -312,7 +312,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
         end
     elseif length(ARGS) == 1 && ARGS[1] == "--demo"
         bmp = render(Viewport(400, 400), demoScene)
-        writePPM("demo.ppm", bmp)
+        writePPM("demo.ppm", reshape(bmp, (400, 400, 3)))
     else
         println("Usage: raytracer [scene file] [output ppm]")
     end
