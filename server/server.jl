@@ -22,12 +22,13 @@ function main()
     scenehash = nothing
     firstclient = ()
 
-    # TODO Test if correct client; add temporary bias to receive from previous client
+    # TODO Test if correct client; add temporary bias to receive from previous client - might be done
     while scenehash != hash(scenefile) && server_state == states[1]
         # global scenefile, scenehash, client, confirmcode, errorcode
 
         client, r = recvfrom(sock)
         firstclient == () && (firstclient = client)
+        client != firstclient && send(sock, client.host, client.port, errorcode); continue
         if r == confirmcode  # if r is confirm and the scene file isn't complete yet, send error and restart
             send(sock, client.host, client.port, errorcode)
             scenefile = ""
@@ -35,7 +36,6 @@ function main()
             client = ()
             continue
         end
-        client != firstclient && send(sock, client.host, client.port, errorcode); continue
 
         scenehash = reinterpret(UInt64, r[1:8])[1]  # reinterpret combines an array of UInt8 to a single UInt64
         scenefile *= String(copy(r[9:end]))
@@ -63,16 +63,20 @@ function main()
         r == confirmcode && (server_state = states[4])
     end
 
-    if server_state == states[4]
-        println("Finished!")
-        close(sock)
-        return true
-    else
-        println("Not finished, restarting...!")
-        close(sock)
-        return false
-    end
+    close(sock)
+
+    # if server_state == states[4]
+    #     println("Finished!")
+    #     close(sock)
+    #     return true
+    # else
+    #     println("Not finished, restarting...!")
+    #     close(sock)
+    #     return false
+    # end
 end
 
 
-main()
+while true
+    main()
+end
