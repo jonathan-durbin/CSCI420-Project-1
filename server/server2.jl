@@ -3,49 +3,76 @@ using Sockets
 include("../julia/raytracer.jl")
 using .RayTracer
 
+
 function main()
+    states = [
+        "waiting for file",
+        "waiting for job",
+        "processing job",
+        "finished"
+    ]
+    server_state = states[1]
     sock = UDPSocket()
     bind(sock, ip"127.0.0.1", 8055)
 
-    confirm = UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-    error   = UInt8[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
+    confirmcode = UInt8[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+    errorcode   = UInt8[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 
     scenefile = ""
     scenehash = nothing
-    client = ""
+    firstclient = ()
 
     # TODO Test if correct client; add temporary bias to receive from previous client
-    while scenehash != hash(scenefile)
-        global scenefile, scenehash, client, confirm, error
+    while scenehash != hash(scenefile) && server_state == states[1]
+        # global scenefile, scenehash, client, confirmcode, errorcode
 
-        client, r = recvfrom(sock)  # recv blocks execution.
-        if r == confirm
-            send(sock, client, 9055, error)
+        client, r = recvfrom(sock)
+        firstclient == () && (firstclient = client)
+        if r == confirmcode  # if r is confirm and the scene file isn't complete yet, send error and restart
+            send(sock, client.host, client.port, errorcode)
             scenefile = ""
             scenehash = nothing
-            client = ""
+            client = ()
             continue
         end
+        client != firstclient && send(sock, client.host, client.port, errorcode); continue
+
         scenehash = reinterpret(UInt64, r[1:8])[1]  # reinterpret combines an array of UInt8 to a single UInt64
-        scenefile = scenefile * String(r[9:end])
+        scenefile *= String(copy(r[9:end]))
+        scenehash == hash(scenefile) && (server_state = states[2])
     end
 
-    send(sock, client, 9055, confirm)
+    send(sock, firstclient.host, firstclient.port, confirmcode)  # got the whole file at this point
+    view, scene = parseFile(IOBuffer(scenefile))
 
-    println("Got the whole file!")
-    scenebuffer = IOBuffer(scenefile)
-    view, scene = parseFile(scenebuffer)
-
-    ip = ""
-    r = Int64
-    while ip != client
-        global ip, r
-        ip, r = recvfrom(sock)
+    chunk = 0:0
+    while server_state == states[2]
+        client, r = recvfrom(sock)
+        client != firstclient && send(sock, client.host, client.port, errorcode); continue
+        length(r) != 16 && send(sock, client.host, client.port, errorcode)
+        r = reinterpret(Int64, r)
+        chunk = r[1]:r[2]
+        send(sock, client.host, client.port, confirmcode)
+        server_state = states[3]
     end
 
+    bmp = collect(Iterators.flatten(eachrow(render(view, scene, chunk))))  # this can be directly sent.
+    while server_state == states[3]
+        send(sock, firstclient.host, firstclient.port, bmp)
+        client, r = recvfrom(sock)  # should we assume that client is equal to firstclient at this point?
+        r == confirmcode && (server_state = states[4])
+    end
 
-
-    close(sock)
+    if server_state == states[4]
+        println("Finished!")
+        close(sock)
+        return true
+    else
+        println("Not finished, restarting...!")
+        close(sock)
+        return false
+    end
 end
+
 
 main()
