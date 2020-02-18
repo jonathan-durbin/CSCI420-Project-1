@@ -210,7 +210,7 @@ function render(view::Viewport, scene::Scene, range::UnitRange{Int64} = 1:view.w
         bitmap = zeros(UInt8, (view.width, view.height, 3))
         default = true
     else
-        bitmap = zeros(UInt8, (view.width * view.height, 3))
+        bitmap = zeros(UInt8, (range.stop - range.start + 1, 3))
         default = false
     end
     for (i, val) = enumerate(range)
