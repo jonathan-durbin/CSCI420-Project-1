@@ -118,7 +118,7 @@ function handle(
     while server_state == states[3]  # processing job
         tries += 1
 
-        ip, r = receive_from(socket, server, recv_channels, errorcode, 0.5)
+        ip, r = receive_from(socket, server, recv_channels, errorcode, 1)
         # if the length of what we got is shorter/longer than what we expected,
         # or if recv timed out
         # if we've tried too many times, send chunk back to chunks and return
