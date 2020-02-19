@@ -13,7 +13,7 @@ struct Server
 end
 
 
-function timeout(n::Int, v::Bool = false)
+function timeout(n::Union{Float64, Int64}, v::Bool = false)
     sleep(n)
     v && println("Timed out")
     return false
@@ -25,7 +25,7 @@ function receive_from(
     expected_server::Server,
     recv_channels::Dict{Server,Channel{Any}},
     error_code::Array{UInt8,1},
-    n::Int
+    n::Union{Float64, Int64}
     )
     a = @async recvfrom(socket)
     b = @async timeout(n)  # if no response in n seconds, then return the error code
@@ -57,7 +57,7 @@ function handle(
     file::String,
     numbytes::Int,
     chunks::Channel,
-    recv_channels::Channel
+    recv_channels::Dict{Server, Channel{Any}}
     )
     states = [
         "waiting for file",
@@ -72,6 +72,7 @@ function handle(
 
     tries = 0
     while server_state == states[1]  # waiting for file
+        println(server_state)
         tries += 1
         open(file, "r") do io
             # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -91,14 +92,18 @@ function handle(
         if r == confirmcode
             server_state = states[2]
         else
-            tries > maxtries && return false, server  # just give up talking to this server at this point.
+            tries > maxtries && return (false, server)  # just give up talking to this server at this point.
             println("Error while sending file to $server, retrying ($(tries/maxtries))...")
         end
     end
 
     tries = 0
+    println(length(chunks.data))
     chunk = take!(chunks)
+    println(length(chunks.data))
     while server_state == states[2]  # waiting for job
+        println(server_state)
+        println("Chunk: ", chunk)
         tries += 1
 
         send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
@@ -106,9 +111,8 @@ function handle(
         if r == confirmcode
             server_state = states[3]
         else
-            put!(chunks, chunk)
             println("Error while sending job to $server, retrying ($(tries/maxtries))...")
-            tries > maxtries && return false, server  # just give up talking to this server at this point.
+            tries > maxtries && (put!(chunks, chunk); return (false, server))  # just give up talking to this server at this point.
             sleep(0.1)  # wait some time to give other tasks a chance to take that chunk.
         end
     end
@@ -116,6 +120,7 @@ function handle(
     tries = 0
     r = UInt8[]
     while server_state == states[3]  # processing job
+        println(server_state)
         tries += 1
 
         ip, r = receive_from(socket, server, recv_channels, errorcode, 1)
@@ -123,7 +128,7 @@ function handle(
         # or if recv timed out
         # if we've tried too many times, send chunk back to chunks and return
         if length(r) != chunk.stop - chunk.start + 1  || r == errorcode
-            tries > maxtries && put!(chunks, chunk); return false, server
+            tries > maxtries && (println("Length of channel: $(length(chunks.data))"); put!(chunks, chunk); return (false, server))
             send(socket, server.host, server.port, errorcode)
         else
             send(socket, server.host, server.port, confirmcode)
@@ -132,6 +137,7 @@ function handle(
     end
 
     if server_state == states[4]  # finished
+        println(server_state)
         return true, server, chunk, r
     end
 end
@@ -142,7 +148,7 @@ function main()
     bind(socket, ip"127.0.0.1", 9055)
     # getaddrinfo("D13055"), etc...
     server_list = [
-        Server(ip"127.0.0.1", 5055)
+        Server(ip"127.0.0.1", 8055)
     ]
     file = "client/default.scene"
     numbytes = 500  # Max bytes to send via UDP
@@ -158,19 +164,24 @@ function main()
         end
     end
     recv_channels = Dict(server => Channel(1) for server in server_list)
+    println("Initialised chunks, recv_channels, view, scene.")
 
     tasks = map(server ->
         () -> Task(() -> handle(socket, server, file, numbytes, chunks, recv_channels)),
         server_list
     )
-    tasklist = [(:take, t()) for t in tasks]
+    tasklist = [(:take, schedule(t())) for t in tasks]
+    println("Created task list.")
     # TODO: create empty image (done), update it (done), know when to break the below loop when the image is finished (done), write the image ppm file
     while any(ismissing, final_image)  # while image is not completed
+        println("Selecting from the task list.")
         i, r = select(tasklist)  # i is index of server_list, r is return value of first function to return
-        @assert length(r) >= 2  # r should be at least (success_code, server), with more if its successful
+        println("Selected from the task list.")
+        @assert length(r) >= 2 "Task returned a smaller result than expected." # r should be at least (success_code, server), with more if its successful
 
         if r[1] == false  # timed out
             println("Timed out in main execution with server $(r[2]). All retries should already have been attempted.")
+            break
         else
             flag, server, chunk, result = r
             final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
@@ -179,7 +190,7 @@ function main()
     end
     close(socket)
     final_image = reshape(final_image, view.height, view.width, 3)
-
+    writePPM("test.ppm", final_image)
 end
 
 main()
