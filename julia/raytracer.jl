@@ -248,8 +248,8 @@ end
 
 function parseFile(file)
     if typeof(file) == String
-        open(file, 'r') do io
-            file = IOBuffer(io)
+        open(file, "r") do io
+            file = IOBuffer(read(io))
         end
     end
     view = Viewport(600,600)
@@ -257,7 +257,7 @@ function parseFile(file)
     lights = []
     camera = Nothing
     for rawl in eachline(file)
-        l = split(rawl,"#")
+        l = split(rawl, "#")
         if length(l) == 0
             continue
         end
