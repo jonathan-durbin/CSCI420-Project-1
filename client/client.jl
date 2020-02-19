@@ -72,10 +72,10 @@ function handle(
     maxtries = 5
     done = false
 
-    while !isready(chunks)  # CHECK: while chunks is empty?
+    while !done
         tries = 0
         while server_state == states[1] # waiting for file
-            println(server_state)
+            tries == 0 && println(server_state)
             tries += 1
             open(file, "r") do io
                 # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -96,16 +96,15 @@ function handle(
                 server_state = states[2]
             else
                 tries > maxtries && return (false, server)  # just give up talking to this server at this point.
-                println("Error while sending file to $server, retrying ($(tries/maxtries))...")
+                println("Error while sending file to $server, retrying ($tries/$maxtries)...")
             end
         end
 
         tries = 0
         chunk = take!(chunks)
-        println(length(chunks.data))
         while server_state == states[2]  # waiting for job
-            println(server_state)
-            println("Chunk: ", chunk)
+            tries == 0 && println(server_state)
+            tries == 0 && println("Chunk: ", chunk)
             tries += 1
 
             send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
@@ -113,7 +112,7 @@ function handle(
             if r == confirmcode
                 server_state = states[3]
             else
-                println("Error while sending job to $server, retrying ($(tries/maxtries))...")
+                println("Error while sending job to $server, retrying ($tries/$maxtries)...")
                 tries > maxtries && (put!(chunks, chunk); return (false, server))  # just give up talking to this server at this point.
                 sleep(0.1)  # wait some time to give other tasks a chance to take that chunk.
             end
@@ -122,10 +121,10 @@ function handle(
         tries = 0
         r = UInt8[]
         while server_state == states[3]  # processing job
-            println(server_state)
+            tries == 0 && println(server_state)
             tries += 1
 
-            ip, r = receive_from(socket, server, recv_channels, errorcode, 1)
+            ip, r = receive_from(socket, server, recv_channels, errorcode, 2)
             # if the length of what we got is shorter/longer than what we expected,
             # or if recv timed out
             # if we've tried too many times, send chunk back to chunks and return
@@ -143,8 +142,10 @@ function handle(
             put!(final_image_channel, (chunk, r))
             # return (true, server, chunk, r)
             server_state = states[2]
+            !isready(chunks) && (done = true)
         end
     end
+    return "finished"
 end
 
 
@@ -153,10 +154,6 @@ function update_final_image(
     final_image_channel::Channel{Tuple{UnitRange{Int64}, Array{UInt8, 1}}}
     )
     chunk, result = take!(final_image_channel)
-<<<<<<< HEAD
-    println(chunk, result)
-=======
->>>>>>> 2d367e4e9312d36240507ea95723e85c5a8cf84b
     final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
     return
 end
@@ -194,12 +191,10 @@ function main()
     )
     push!(tasks, () -> Task(() -> update_final_image(final_image, final_image_channel)))
     tasklist = [(:take, schedule(t())) for t in tasks]
-    println("Created task list.")
+    # println("Created task list. Length is $(length(tasklist))")
     # TODO: create empty image (done), update it (done), know when to break the below loop when the image is finished (done), write the image ppm file
     while any(ismissing, final_image)  # while image is not completed
-        println("Selecting from the task list.")
         i, r = select(tasklist)  # i is index of server_list, r is return value of first function to return
-        println("Selected from the task list.")
 
         if isnothing(r)
             number_missing = count(ismissing, final_image)
@@ -212,8 +207,6 @@ function main()
             break
         elseif length(r) == 4
             flag, server, chunk, result = r
-            # println("Finished task $i, flag=$flag, server=$server, chunk=$chunk, result=$r.")
-            # final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
             tasklist[i] = (:take, schedule(Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels, final_image_channel))))
         end
     end
