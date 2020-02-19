@@ -153,7 +153,10 @@ function update_final_image(
     final_image_channel::Channel{Tuple{UnitRange{Int64}, Array{UInt8, 1}}}
     )
     chunk, result = take!(final_image_channel)
+<<<<<<< HEAD
     println(chunk, result)
+=======
+>>>>>>> 2d367e4e9312d36240507ea95723e85c5a8cf84b
     final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
     return
 end
@@ -212,7 +215,6 @@ function main()
             # println("Finished task $i, flag=$flag, server=$server, chunk=$chunk, result=$r.")
             # final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
             tasklist[i] = (:take, schedule(Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels, final_image_channel))))
-
         end
     end
     close(socket)
