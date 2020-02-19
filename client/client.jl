@@ -71,11 +71,12 @@ function handle(
     errorcode = UInt8[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
     maxtries = 5
     done = false
+    debug = false
 
     while !done
         tries = 0
         while server_state == states[1] # waiting for file
-            tries == 0 && println(server_state)
+            tries == 0 && debug && println(server_state)
             tries += 1
             open(file, "r") do io
                 # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -103,8 +104,7 @@ function handle(
         tries = 0
         chunk = take!(chunks)
         while server_state == states[2]  # waiting for job
-            tries == 0 && println(server_state)
-            tries == 0 && println("Chunk: ", chunk)
+            tries == 0 && debug && println(server_state)
             tries += 1
 
             send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
@@ -121,7 +121,7 @@ function handle(
         tries = 0
         r = UInt8[]
         while server_state == states[3]  # processing job
-            tries == 0 && println(server_state)
+            tries == 0 && debug && println(server_state)
             tries += 1
 
             ip, r = receive_from(socket, server, recv_channels, errorcode, 2)
@@ -138,14 +138,14 @@ function handle(
         end
 
         if server_state == states[4]  # finished
-            println(server_state)
+            debug && println(server_state)
             put!(final_image_channel, (chunk, r))
             # return (true, server, chunk, r)
             server_state = states[2]
             !isready(chunks) && (done = true)
         end
     end
-    return "finished"
+    return (true, server)
 end
 
 
@@ -176,8 +176,11 @@ function main()
     num_chunks = ceil(Int, N/numpixels)
 
     final_image_channel = Channel{Tuple{UnitRange{Int64}, Array{UInt8, 1}}}(num_chunks)
-    chunks = Channel{UnitRange{Int64}}(num_chunks)  # Tracks pixel chunks waiting for from servers
+    chunks = Channel{UnitRange{Int64}}(num_chunks)  # Tracks chunks, or individual jobs.
     for chunk in [i+1:i+numpixels for i in 0:numpixels:N]
+        if chunk.stop > N
+            chunk = chunk.start:N
+        end
         put!(chunks, chunk)
     end
     recv_channels = Dict(server => Channel(1) for server in server_list)
@@ -199,20 +202,23 @@ function main()
         if isnothing(r)
             number_missing = count(ismissing, final_image)
             percentage_missing = 100.0 - number_missing / length(final_image) * 100
-            println("Final image percentage complete: %$(round(percentage_missing, digits=2))")
+            print("Final image percentage complete: %$(round(percentage_missing, digits=2))\r")
             tasklist[i] = (:take, schedule(Task(() -> update_final_image(final_image, final_image_channel))))
             continue
         elseif r[1] == false  # timed out
             println("Timed out in main execution with server $(r[2]). All retries should already have been attempted.")
             break
-        elseif length(r) == 4
-            flag, server, chunk, result = r
-            tasklist[i] = (:take, schedule(Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels, final_image_channel))))
+        elseif r[1] == true
+            flag, server = r
+            println("Finished with server $server.")
+            # tasklist[i] = (:take, schedule(Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels, final_image_channel))))
         end
     end
     close(socket)
-    final_image = reshape(final_image, view.height, view.width, 3)
-    writePPM("test.ppm", final_image)
+    close(final_image_channel)
+    close(chunks)
+    final_image = permutedims(reshape(final_image, view.height, view.width, 3), [2, 1, 3])
+    writePPM("image.ppm", final_image)
 end
 
 main()

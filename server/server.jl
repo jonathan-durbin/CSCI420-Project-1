@@ -23,11 +23,13 @@ function main()
     firstclient = ()
 
     done = false
+    debug = false
 
+    println("Ready")
     while !done
         # TODO Test if correct client; add temporary bias to receive from previous client - might be done
         while scenehash != hash(scenefile) && server_state == states[1]  # waiting for file
-            println(server_state)
+            debug && println(server_state)
 
             client, r = recvfrom(sock)
             firstclient == () && (firstclient = client)
@@ -35,7 +37,7 @@ function main()
             client != firstclient && (send(sock, client.host, client.port, errorcode); println("Heard from a different client than expected, continuing.."); continue)
             # println("Got $(length(r)) bytes from $client. Firstclient is $firstclient. Scenehash is $scenehash, scenefile hash is $(hash(scenefile)).")
             if r == confirmcode  # if r is confirm and the scene file isn't complete yet, send error and restart
-                println("Got confirm code before I expected, retrying...")
+                println("Got confirm code before expected, retrying...")
                 send(sock, client.host, client.port, errorcode)
                 scenefile = ""
                 scenehash = nothing
@@ -46,14 +48,14 @@ function main()
             scenehash = reinterpret(UInt64, r[1:8])[1]  # reinterpret combines an array of UInt8 to a single UInt64
             scenefile *= String(copy(r[9:end]))
             scenehash == hash(scenefile) && (server_state = states[2])
+            scenehash == hash(scenefile) && send(sock, firstclient.host, firstclient.port, confirmcode)  # got the whole file at this point
         end
 
-        send(sock, firstclient.host, firstclient.port, confirmcode)  # got the whole file at this point
         view, scene = parseFile(IOBuffer(scenefile))
 
         chunk = 0:0
         while server_state == states[2]  # waiting for job
-            println(server_state)
+            debug && println(server_state)
             client, r = recvfrom(sock)
             client != firstclient && (println("error in state 2 client=$client, firstclient=$firstclient"); send(sock, client.host, client.port, errorcode); continue)
             length(r) != 16 && (println("error in state 2 length(r)=$(length(r))"); send(sock, client.host, client.port, errorcode); continue)
@@ -65,14 +67,14 @@ function main()
 
         bmp = collect(Iterators.flatten(eachrow(render(view, scene, chunk))))  # this can be directly sent.
         while server_state == states[3]  # processing job
-            println(server_state)
+            debug && println(server_state)
             send(sock, firstclient.host, firstclient.port, bmp)
             client, r = recvfrom(sock)  # should we assume that client is equal to firstclient at this point?
             r == confirmcode && (server_state = states[4])
         end
 
         if server_state == states[4]
-            println(server_state)
+            debug && println(server_state)
             server_state = states[2]
         end
     end
@@ -80,6 +82,4 @@ function main()
 end
 
 
-while true
-    main()
-end
+main()
