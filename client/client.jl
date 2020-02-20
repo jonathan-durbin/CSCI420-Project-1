@@ -164,7 +164,12 @@ function main()
     bind(socket, ip"127.0.0.1", 9055)
     # getaddrinfo("D13055"), etc...
     server_list = [
-        Server(ip"127.0.0.1", 8055)
+        Server(getaddrinfo("localhost"), 8055),  # Local server
+        Server(getaddrinfo("D13056"),    8055),  # Python
+        Server(getaddrinfo("D13055"),    8055),  # Blues Clues
+        Server(getaddrinfo("D13052"),    8055),  # 2.5 Ryans
+        Server(getaddrinfo("D13054"),    8055),  # Wild Cats
+        Server(getaddrinfo("D09105"),    8055)   # Julia Dream
     ]
     file = "client/default.scene"
     numbytes = 500  # Max bytes to send via UDP
