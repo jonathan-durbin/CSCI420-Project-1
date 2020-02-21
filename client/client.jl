@@ -107,6 +107,7 @@ function handle(
             tries == 0 && debug && println(server_state)
             tries += 1
 
+            # I am the voice of one calling in the wilderness...
             send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
             ip, r = receive_from(socket, server, recv_channels, errorcode, 0.5)
             if r == confirmcode
@@ -160,18 +161,24 @@ end
 
 
 function main()
+    if length(ARGS) != 4
+        println("Usage: julia $PROGRAM_FILE [scene file] [server file] [ppm file name]")
+        return nothing
+    end
+    server_list = readlines(ARGS[3])
+    server_list = map(i -> Server(getaddrinfo(i), 8055), server_list)
+    # server_list = [
+    #     Server(getaddrinfo("localhost"), 8055),  # Local server
+    #     Server(getaddrinfo("D13056"),    8055),  # Python
+    #     Server(getaddrinfo("D13055"),    8055),  # Blues Clues
+    #     Server(getaddrinfo("D13052"),    8055),  # 2.5 Ryans
+    #     Server(getaddrinfo("D13054"),    8055),  # Wild Cats
+    #     Server(getaddrinfo("D09105"),    8055)   # Julia Dream
+    # ]
     socket = UDPSocket()
     bind(socket, ip"127.0.0.1", 9055)
-    # getaddrinfo("D13055"), etc...
-    server_list = [
-        Server(getaddrinfo("localhost"), 8055),  # Local server
-        Server(getaddrinfo("D13056"),    8055),  # Python
-        Server(getaddrinfo("D13055"),    8055),  # Blues Clues
-        Server(getaddrinfo("D13052"),    8055),  # 2.5 Ryans
-        Server(getaddrinfo("D13054"),    8055),  # Wild Cats
-        Server(getaddrinfo("D09105"),    8055)   # Julia Dream
-    ]
-    file = "client/default.scene"
+    file = ARGS[2]
+    # file = "client/default.scene"
     numbytes = 500  # Max bytes to send via UDP
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
 
@@ -223,7 +230,7 @@ function main()
     close(final_image_channel)
     close(chunks)
     final_image = permutedims(reshape(final_image, view.height, view.width, 3), [2, 1, 3])
-    writePPM("image.ppm", final_image)
+    writePPM(ARGS[4], final_image)
 end
 
 main()
