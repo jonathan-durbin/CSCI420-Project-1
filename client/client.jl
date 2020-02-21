@@ -166,7 +166,7 @@ function main()
         return nothing
     end
     server_list = readlines(ARGS[2])
-    push!(server_list, "localhost")
+    # push!(server_list, "localhost")
     server_list = map(i -> Server(getaddrinfo(i), 9105), server_list)
 
     socket = UDPSocket()
