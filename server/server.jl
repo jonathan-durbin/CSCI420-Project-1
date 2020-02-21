@@ -28,6 +28,8 @@ function main()
     println("Ready")
     while !done
         # TODO Test if correct client; add temporary bias to receive from previous client - might be done
+        # follow up on above TODO: create a dictionary like client -> scenefile, checking that each file is complete against its hash,
+        # based on what client the server is receiving from.
         while scenehash != hash(scenefile) && server_state == states[1]  # waiting for file
             debug && println(server_state)
 
