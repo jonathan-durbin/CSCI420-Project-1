@@ -167,10 +167,10 @@ function main()
     end
     server_list = readlines(ARGS[2])
     push!(server_list, "localhost")
-    server_list = map(i -> Server(getaddrinfo(i), 8055), server_list)
+    server_list = map(i -> Server(getaddrinfo(i), 9105), server_list)
 
     socket = UDPSocket()
-    bind(socket, ip"127.0.0.1", 9055)
+    bind(socket, ip"127.0.0.1", 8105)
     file = ARGS[1]
     numbytes = 500  # Max bytes to send via UDP
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
