@@ -161,17 +161,17 @@ end
 
 
 function main()
-    if length(ARGS) != 4
+    if length(ARGS) != 3
         println("Usage: julia $PROGRAM_FILE [scene file] [server file] [ppm file name]")
         return nothing
     end
-    server_list = readlines(ARGS[3])
+    server_list = readlines(ARGS[2])
     push!(server_list, "localhost")
     server_list = map(i -> Server(getaddrinfo(i), 8055), server_list)
 
     socket = UDPSocket()
     bind(socket, ip"127.0.0.1", 9055)
-    file = ARGS[2]
+    file = ARGS[1]
     numbytes = 500  # Max bytes to send via UDP
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
 
@@ -223,7 +223,7 @@ function main()
     close(final_image_channel)
     close(chunks)
     final_image = permutedims(reshape(final_image, view.height, view.width, 3), [2, 1, 3])
-    writePPM(ARGS[4], final_image)
+    writePPM(ARGS[3], final_image)
 end
 
 main()
