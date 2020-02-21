@@ -1,6 +1,6 @@
 using Sockets
 
-include("../julia/raytracer.jl")
+include("raytracer.jl")
 using .RayTracer
 
 
