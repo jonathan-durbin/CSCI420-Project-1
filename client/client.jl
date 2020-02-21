@@ -166,19 +166,12 @@ function main()
         return nothing
     end
     server_list = readlines(ARGS[3])
+    push!(server_list, "localhost")
     server_list = map(i -> Server(getaddrinfo(i), 8055), server_list)
-    # server_list = [
-    #     Server(getaddrinfo("localhost"), 8055),  # Local server
-    #     Server(getaddrinfo("D13056"),    8055),  # Python
-    #     Server(getaddrinfo("D13055"),    8055),  # Blues Clues
-    #     Server(getaddrinfo("D13052"),    8055),  # 2.5 Ryans
-    #     Server(getaddrinfo("D13054"),    8055),  # Wild Cats
-    #     Server(getaddrinfo("D09105"),    8055)   # Julia Dream
-    # ]
+
     socket = UDPSocket()
     bind(socket, ip"127.0.0.1", 9055)
     file = ARGS[2]
-    # file = "client/default.scene"
     numbytes = 500  # Max bytes to send via UDP
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
 
