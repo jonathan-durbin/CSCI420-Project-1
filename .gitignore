@@ -1,3 +1,4 @@
 *.png
 *.sh
 SERVER_LIST
+server/raytracer.jl
