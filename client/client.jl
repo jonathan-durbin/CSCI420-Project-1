@@ -1,5 +1,7 @@
 using Sockets
 
+import Base.Threads.@spawn
+
 include("extra/Select.jl") # From https://github.com/NHDaly/Select.jl/blob/master/src/Select.jl
 using .Select
 
@@ -12,7 +14,7 @@ struct Server
     port::Int
 end
 
-
+# NOTE: might not need this
 function timeout(n::Union{Float64, Int64}, v::Bool = false)
     sleep(n)
     v && println("Timed out")
@@ -20,34 +22,13 @@ function timeout(n::Union{Float64, Int64}, v::Bool = false)
 end
 
 
-function receive_from(
-    socket::UDPSocket,
-    expected_server::Server,
-    recv_channels::Dict{Server,Channel{Any}},
-    error_code::Array{UInt8,1},
-    n::Union{Float64, Int64}
-    )
-    a = @async recvfrom(socket)
-    b = @async timeout(n)  # if no response in n seconds, then return the error code
-    @select begin
-        a |> resp => begin
-            server, r = Server(resp[1].host, resp[1].port), resp[2]
-        end
-        b => begin
-            println("receive_from timed out waiting for $expected_server for $n seconds.")
-            server, r = Server(ip"127.0.0.1", 9055), error_code
-        end
-    end
-    # if we receive (successfully) from a server that we haven't been talking to,
-    # then put the data in the channel for the corresponding server,
-    # and try to take from the channel for the expected server
-    if server != expected_server && r != error_code
-        put!(recv_channels[server], r)
-        r = take!(recv_channels[expected_server])
-        server = expected_server  # r is now the data from the server that we expected, so server can be replaced
-    end
-    # FIXME: if above times out, server is now equal to a (probably) unexpected server, so this might not be good
-    return (server, r)
+function receive_from(socket::UDPSocket, recv_channels::Dict{Server,Channel{Any}})
+    resp = recvfrom(socket)
+    server, r = Server(resp[1].host, resp[1].port), resp[2]
+    @debug "Got $(length(r)) bytes from $server."
+    # if we receive from a server, then put the data in the channel for the corresponding server
+    put!(recv_channels[server], r)
+    return "receive_from"
 end
 
 
@@ -73,10 +54,11 @@ function handle(
     done = false
     debug = false
 
+    @debug "Starting handle for $server."
     while !done
         tries = 0
         while server_state == states[1] # waiting for file
-            tries == 0 && debug && println(server_state)
+            @debug "Server $server: state: $server_state."
             tries += 1
             open(file, "r") do io
                 # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -87,33 +69,36 @@ function handle(
                 bs = read(io, numbytes)
                 while length(bs) > 0
                     # send numbytes-byte packets, adding the file hash (8 bytes) to the beginning of each message
+                    @info "Sending file to $server. Bytes remaining: $(length(bs))."
                     send(socket, server.host, server.port, cat(h, bs, dims=1))
                     bs = read(io, numbytes)
                 end
             end
             # send(socket, server.host, server.port, confirmcode)
-            ip, r = receive_from(socket, server, recv_channels, errorcode, 0.5)
+            r = take!(recv_channels[server])
             if r == confirmcode
+                @info "Server $server got the whole file, moving to state 2."
                 server_state = states[2]
             else
+                @error "Server $server did not get the whole file. Retrying ($tries/$maxtries)"
                 tries > maxtries && return (false, server)  # just give up talking to this server at this point.
-                println("Error while sending file to $server, retrying ($tries/$maxtries)...")
             end
         end
 
         tries = 0
         chunk = take!(chunks)
         while server_state == states[2]  # waiting for job
-            tries == 0 && debug && println(server_state)
+            @debug "Server $server: state: $server_state."
             tries += 1
 
             # I am the voice of one calling in the wilderness...
             send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
-            ip, r = receive_from(socket, server, recv_channels, errorcode, 0.5)
+            r = take!(recv_channels[server])
             if r == confirmcode
+                @info "Server $server started working on pixels $chunk, moving to state 3."
                 server_state = states[3]
             else
-                println("Error while sending job to $server, retrying ($tries/$maxtries)...")
+                @error "Sending job to $server failed, retrying ($tries/$maxtries)"
                 tries > maxtries && (put!(chunks, chunk); return (false, server))  # just give up talking to this server at this point.
                 sleep(0.1)  # wait some time to give other tasks a chance to take that chunk.
             end
@@ -122,31 +107,31 @@ function handle(
         tries = 0
         r = UInt8[]
         while server_state == states[3]  # processing job
-            tries == 0 && debug && println(server_state)
+            @debug "Server $server: state: $server_state."
             tries += 1
 
-            ip, r = receive_from(socket, server, recv_channels, errorcode, 2)
-            # if the length of what we got is shorter/longer than what we expected,
-            # or if recv timed out
+            r = take!(recv_channels[server])
+            # if the length of what we got is shorter/longer than what we expected, or if recv timed out
             # if we've tried too many times, send chunk back to chunks and return
             if length(r) != (chunk.stop - chunk.start + 1)*3 || r == errorcode
+                @error "Server $server sent back a strange result or an error. Expected length: $((chunk.stop - chunk.start + 1)*3) Got: $(length(r))."
                 tries > maxtries && (put!(chunks, chunk); return (false, server))
                 send(socket, server.host, server.port, errorcode)
             else
+                @info "Server $server sent back completed chunk $chunk. Moving to state 4."
                 send(socket, server.host, server.port, confirmcode)
                 server_state = states[4]
             end
         end
 
         if server_state == states[4]  # finished
-            debug && println(server_state)
+            @debug "Server $server: state: $server_state."
             put!(final_image_channel, (chunk, r))
-            # return (true, server, chunk, r)
             server_state = states[2]
             !isready(chunks) && (done = true)
         end
     end
-    return (true, server)
+    return ("handle", server)
 end
 
 
@@ -156,7 +141,7 @@ function update_final_image(
     )
     chunk, result = take!(final_image_channel)
     final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
-    return
+    return "update_final_image"
 end
 
 
@@ -188,7 +173,7 @@ function main()
         end
         put!(chunks, chunk)
     end
-    recv_channels = Dict(server => Channel(1) for server in server_list)
+    recv_channels = Dict(server => Channel(Inf) for server in server_list)
     println("Initialised chunks, recv_channels, final_image_channel, view, scene.")
 
     tasks = Array{Any, 1}(undef, length(server_list))
@@ -197,25 +182,30 @@ function main()
         tasks,
         server_list
     )
+    push!(tasks, () -> Task(() -> receive_from(socket, recv_channels)))
     push!(tasks, () -> Task(() -> update_final_image(final_image, final_image_channel)))
     tasklist = [(:take, schedule(t())) for t in tasks]
     # println("Created task list. Length is $(length(tasklist))")
-    # TODO: create empty image (done), update it (done), know when to break the below loop when the image is finished (done), write the image ppm file
     while any(ismissing, final_image)  # while image is not completed
+        # TODO: update tasklist successfully
         i, r = select(tasklist)  # i is index of server_list, r is return value of first function to return
 
-        if isnothing(r)
+        if r == "update_final_image"
             number_missing = count(ismissing, final_image)
             percentage_missing = 100.0 - number_missing / length(final_image) * 100
             print("Final image percentage complete: %$(round(percentage_missing, digits=2))\r")
             tasklist[i] = (:take, schedule(Task(() -> update_final_image(final_image, final_image_channel))))
-            continue
-        elseif r[1] == false  # timed out
-            println("Timed out in main execution with server $(r[2]). All retries should already have been attempted.")
-            break
-        elseif r[1] == true
+            # continue
+        elseif r == "receive_from"
+            tasklist[i] = (:take, schedule(Task(() -> receive_from(socket, recv_channels))))
+            # continue
+        # elseif r[1] == false  # timed out
+        #     println("Timed out in main execution with server $(r[2]). All retries should already have been attempted.")
+        #     break
+        elseif r[1] == "handle"
             flag, server = r
             println("Finished with server $server.")
+            # continue
             # tasklist[i] = (:take, schedule(Task(() -> handle(socket, server_list[i], file, numbytes, chunks, recv_channels, final_image_channel))))
         end
     end
