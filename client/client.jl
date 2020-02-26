@@ -54,11 +54,11 @@ function handle(
     done = false
     debug = false
 
-    @debug "Starting handle for $server."
+    @info "Starting handle for $server."
     while !done
         tries = 0
         while server_state == states[1] # waiting for file
-            @debug "Server $server: state: $server_state."
+            @info "$server: $server_state."
             tries += 1
             open(file, "r") do io
                 # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -74,13 +74,12 @@ function handle(
                     bs = read(io, numbytes)
                 end
             end
-            # send(socket, server.host, server.port, confirmcode)
             r = take!(recv_channels[server])
             if r == confirmcode
-                @info "Server $server got the whole file, moving to state 2."
+                @info "$server got the whole file, moving to state 2."
                 server_state = states[2]
             else
-                @error "Server $server did not get the whole file. Retrying ($tries/$maxtries)"
+                @error "$server did not get the whole file. Retrying ($tries/$maxtries)"
                 tries > maxtries && return (false, server)  # just give up talking to this server at this point.
             end
         end
@@ -88,49 +87,49 @@ function handle(
         tries = 0
         chunk = take!(chunks)
         while server_state == states[2]  # waiting for job
-            @debug "Server $server: state: $server_state."
+            @info "$server: $server_state."
             tries += 1
 
             # I am the voice of one calling in the wilderness...
             send(socket, server.host, server.port, reinterpret(UInt8, [chunk.start, chunk.stop]))
             r = take!(recv_channels[server])
             if r == confirmcode
-                @info "Server $server started working on pixels $chunk, moving to state 3."
+                @info "$server started working on pixels $chunk, moving to state 3."
                 server_state = states[3]
             else
                 @error "Sending job to $server failed, retrying ($tries/$maxtries)"
                 tries > maxtries && (put!(chunks, chunk); return (false, server))  # just give up talking to this server at this point.
-                sleep(0.1)  # wait some time to give other tasks a chance to take that chunk.
+                sleep(0.1)  # wait some time to give other threads a chance to take that chunk.
             end
         end
 
         tries = 0
         r = UInt8[]
         while server_state == states[3]  # processing job
-            @debug "Server $server: state: $server_state."
+            @info "$server: $server_state."
             tries += 1
 
             r = take!(recv_channels[server])
             # if the length of what we got is shorter/longer than what we expected, or if recv timed out
             # if we've tried too many times, send chunk back to chunks and return
             if length(r) != (chunk.stop - chunk.start + 1)*3 || r == errorcode
-                @error "Server $server sent back a strange result or an error. Expected length: $((chunk.stop - chunk.start + 1)*3) Got: $(length(r))."
+                @error "$server sent back a strange result or error. Expected length: $((chunk.stop - chunk.start + 1)*3) Got: $(length(r))."
                 tries > maxtries && (put!(chunks, chunk); return (false, server))
                 send(socket, server.host, server.port, errorcode)
             else
-                @info "Server $server sent back completed chunk $chunk. Moving to state 4."
-                send(socket, server.host, server.port, confirmcode)
+                @info "$server sent back completed chunk $chunk. Moving to state 4."
                 server_state = states[4]
             end
         end
 
         if server_state == states[4]  # finished
-            @debug "Server $server: state: $server_state."
+            @info "$server: $server_state."
             put!(final_image_channel, (chunk, r))
             server_state = states[2]
             !isready(chunks) && (done = true)
         end
     end
+    @info "Finished with $server."
     return ("handle", server)
 end
 
