@@ -32,7 +32,7 @@ end
 
 function send_to(
         send_socket::UDPSocket,
-        send_channel::Channel{Tuple{Client, Any}}
+        send_channel::Channel{Tuple{Client, Array{UInt8,1}}}
     )
     client, to_send = take!(send_channel)
     send(send_socket, client.host, client.port, to_send)
@@ -43,7 +43,7 @@ end
 function handle(
         client::Client,
         recv_channels::Dict{Client,Channel{Any}},
-        send_channel::Dict{Client,Channel{Any}}
+        send_channel::Channel{Tuple{Client, Array{UInt8,1}}}
     )
     states = [
         "waiting for file",
@@ -126,7 +126,7 @@ function main()
     bind(recv_sock, ip"127.0.0.1", 7105)
 
     recv_channels = Dict{Client,Channel{Any}}()
-    send_channel = Channel{Tuple{Client, Any}}(Inf)
+    send_channel = Channel{Tuple{Client, Array{UInt8,1}}}(Inf)
     clientlist = Client[]
 
     r = @async receive_from(recv_sock, recv_channels, clientlist)
@@ -139,7 +139,7 @@ function main()
                 @info "Received from $client."
                 if !(client in clientlist)
                     @info "Now handling new client $client."
-                    send_channel[client] = Channel(Inf)
+                    # send_channel[client] = Channel(Inf)
                     @spawn handle(client, recv_channels, send_channel)
                     push!(clientlist, client)
                 end
