@@ -1,5 +1,6 @@
-using Sockets
+module Client
 
+using Sockets
 import Base.Threads.@spawn
 
 include("extra/Select.jl") # From https://github.com/NHDaly/Select.jl/blob/master/src/Select.jl
@@ -11,14 +12,6 @@ using .RayTracer
 
 struct Server
     host::IPv4
-    port::Int
-end
-
-# NOTE: might not need this
-function timeout(n::Union{Float64, Int64}, v::Bool = false)
-    sleep(n)
-    v && println("Timed out")
-    return false
 end
 
 
@@ -27,26 +20,26 @@ function receive_from(
         recv_channels::Dict{Server,Channel{Any}}
     )
     resp = recvfrom(recv_socket)
-    server, r = Server(resp[1].host, resp[1].port), resp[2]
+    server, r = Server(resp[1].host), resp[2]
     @debug "Got $(length(r)) bytes from $server."
     # if we receive from a server, then put the data in the channel for the corresponding server
     put!(recv_channels[server], r)
-    return "receive_from", server
+    return server
 end
 
 
 function send_to(
         send_socket::UDPSocket,
-        send_channel::Channel{Tuple{Server, Array{UInt8,1}}}
+        send_channel::Channel{Tuple{Server, Array{UInt8,1}}},
+        send_to_port::Int
     )
     server, to_send = take!(send_channel)
-    send(send_socket, server.host, server.port, to_send)
-    return "send_to", server
+    send(send_socket, server.host, send_to_port, to_send)
+    return server
 end
 
 
 function handle(
-        socket::UDPSocket,
         server::Server,
         file::String,
         numbytes::Int,
@@ -72,7 +65,7 @@ function handle(
     while !done
         tries = 0
         while server_state == states[1] # waiting for file
-            @info "$server: $server_state."
+            @debug "$server: $server_state."
             tries += 1
             open(file, "r") do io
                 # converts the UInt64 hash to an array of UInt8 partial hashes.
@@ -83,14 +76,14 @@ function handle(
                 bs = read(io, numbytes)
                 while length(bs) > 0
                     # send numbytes-byte packets, adding the file hash (8 bytes) to the beginning of each message
-                    @info "Sending file to $server. Bytes remaining: $(length(bs))."
+                    @debug "Sending file to $server. Bytes remaining: $(length(bs))."
                     put!(send_channel, (server, cat(h, bs, dims=1)))
                     bs = read(io, numbytes)
                 end
             end
             r = take!(recv_channels[server])
             if r == confirmcode
-                @info "$server got the whole file, moving to state 2."
+                @debug "$server got the whole file, moving to state 2."
                 server_state = states[2]
             else
                 @error "$server did not get the whole file. Retrying ($tries/$maxtries)"
@@ -101,13 +94,13 @@ function handle(
         tries = 0
         chunk = take!(chunks)
         while server_state == states[2]  # waiting for job
-            @info "$server: $server_state."
+            @debug "$server: $server_state."
             tries += 1
 
             put!(send_channel, (server, reinterpret(UInt8, [chunk.start, chunk.stop])))
             r = take!(recv_channels[server])
             if r == confirmcode
-                @info "$server started working on pixels $chunk, moving to state 3."
+                @debug "$server started working on pixels $chunk, moving to state 3."
                 server_state = states[3]
             else
                 @error "Sending job to $server failed, retrying ($tries/$maxtries)"
@@ -119,7 +112,7 @@ function handle(
         tries = 0
         r = UInt8[]
         while server_state == states[3]  # processing job
-            @info "$server: $server_state."
+            @debug "$server: $server_state."
             tries += 1
 
             r = take!(recv_channels[server])
@@ -130,21 +123,21 @@ function handle(
                 tries > maxtries && (put!(chunks, chunk); return (false, server))
                 put!(send_channel, (server, errorcode))
             else
-                @info "$server sent back completed chunk $chunk. Moving to state 4."
+                @debug "$server sent back completed chunk $chunk. Moving to state 4."
                 put!(send_channel, (server, confirmcode))
                 server_state = states[4]
             end
         end
 
         if server_state == states[4]  # finished
-            @info "$server: $server_state."
+            @debug "$server: $server_state."
             put!(final_image_channel, (chunk, r))
             server_state = states[2]
             !isready(chunks) && (done = true)
         end
     end
     @info "Finished with $server."
-    return "handle", server
+    return server
 end
 
 
@@ -155,24 +148,24 @@ function update_final_image(
     chunk, result = take!(final_image_channel)
     final_image[chunk, :] = transpose(reshape(result, 3, div(length(result), 3)))
     percentage_missing = 100.0 - count(ismissing, final_image) / length(final_image) * 100
-    return "update_final_image", percentage_missing
+    return percentage_missing
 end
 
-# TODO: client resends scene file after delay, work will need to happen server side. scene=1, job=0?
+# TODO: client resends scene file after delay, work will need to happen server side. scene=1, job=0 encoded in sent data?
 function main()
     if length(ARGS) != 3
         println("Usage: julia $PROGRAM_FILE [scene file] [server file] [ppm file name]")
         return nothing
     end
-    server_list = map(i -> Server(getaddrinfo(i), 9105), readlines(ARGS[2]))
+    send_to_port = 9105
+    server_list = map(i -> Server(getaddrinfo(i)), readlines(ARGS[2]))
 
     file = ARGS[1]
     view, scene = parseFile(file)
 
-    send_socket = UDPSocket()
-    bind(send_socket, ip"127.0.0.1", 6105)
     recv_socket = UDPSocket()
-    bind(recv_socket, ip"127.0.0.1", 5105)
+    bind(recv_socket, ip"127.0.0.1", 6105)
+    send_socket = UDPSocket()
 
     numbytes = 500  # Max bytes to send via UDP
     numpixels = floor(Int, numbytes/3)  # Number of pixels per chunk
@@ -191,28 +184,29 @@ function main()
     recv_channels = Dict(server => Channel(Inf) for server in server_list)
     send_channel = Channel{Tuple{Server, Array{UInt8,1}}}(Inf)
 
-    tasklist = Array{Any, 1}(undef, 0)
-    push!(tasklist, Task(() -> receive_from(recv_socket, recv_channels)))
-    push!(tasklist, Task(() -> send_to(send_socket, send_channel)))
-    push!(tasklist, Task(() -> update_final_image(final_image, final_image_channel)))
-    tasklist = [(:take, schedule(t)) for t in tasklist]
+    r = @async receive_from(recv_socket, recv_channels)
+    s = @async send_to(send_socket, send_channel, send_to_port)
+    u = @async update_final_image(final_image, final_image_channel)
 
     threadlist = [
         @spawn handle(server, file, numbytes, chunks, recv_channels, send_channel, final_image_channel)
         for server in server_list
     ]
-
+    # fetch(threadlist[1])
     @info "Starting."
+    start_time = time()
     while any(ismissing, final_image)  # while image is not completed
-        i, r = select(tasklist)  # i is index of tasklist, r is return value of first function to return
-
-        if r[1] == "update_final_image"
-            print("Final image percentage complete: %$(round(r[2], digits=2))\r")
-            tasklist[i] = (:take, schedule(Task(() -> update_final_image(final_image, final_image_channel))))
-        elseif r[1] == "receive_from"
-            tasklist[i] = (:take, schedule(Task(() -> receive_from(recv_socket, recv_channels))))
-        elseif r[1] == "handle"
-            println("Finished with server $(r[2]).")
+        @select begin
+            r |> r => begin
+                r = @async receive_from(recv_socket, recv_channels)
+            end
+            s |> s => begin
+                s = @async send_to(send_socket, send_channel, send_to_port)
+            end
+            u |> u => begin
+                print("Final image percentage complete: %$(round(u, digits=2))\r")
+                u = @async update_final_image(final_image, final_image_channel)
+            end
         end
     end
 
@@ -220,7 +214,10 @@ function main()
     close(send_socket)
     final_image = permutedims(reshape(final_image, view.height, view.width, 3), [2, 1, 3])
     writePPM(ARGS[3], final_image)
+    println("Finished in $(round(time() - start_time, digits=3)) seconds.")
     return
 end
 
 main()
+
+end  # module Client
