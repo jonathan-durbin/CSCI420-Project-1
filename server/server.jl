@@ -120,7 +120,7 @@ function main()
     send_sock = UDPSocket()
     # bind(send_sock, ip"127.0.0.1", 8105)
     recv_sock = UDPSocket()
-    bind(recv_sock, ip"127.0.0.1", 9105)
+    bind(recv_sock, ip"0.0.0.0", 9105)
     send_to_port = 6105
 
     recv_channels = Dict{Client,Channel{Array{UInt8,1}}}()

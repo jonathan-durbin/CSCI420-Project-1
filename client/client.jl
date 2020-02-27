@@ -164,7 +164,7 @@ function main()
     view, scene = parseFile(file)
 
     recv_socket = UDPSocket()
-    bind(recv_socket, ip"127.0.0.1", 6105)
+    bind(recv_socket, ip"0.0.0.0", 6105)
     send_socket = UDPSocket()
 
     numbytes = 500  # Max bytes to send via UDP
