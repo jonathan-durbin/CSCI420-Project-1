@@ -192,7 +192,7 @@ function main()
         @spawn handle(server, file, numbytes, chunks, recv_channels, send_channel, final_image_channel)
         for server in server_list
     ]
-    # fetch(threadlist[1])
+
     @info "Starting."
     start_time = time()
     while any(ismissing, final_image)  # while image is not completed
