@@ -110,6 +110,11 @@ function handle(
     end
 end
 
+function print_waiting(n::Int)
+    sleep(n)
+    println("Waiting...")
+end
+
 
 function main()
     send_sock = UDPSocket()
@@ -125,6 +130,7 @@ function main()
 
     r = @async receive_from(recv_sock, recv_channels, clientlist)
     s = @async send_to(send_sock, send_channel, send_to_port)
+    w = @async print_waiting(5)
 
     @info "Main loop starting."
     while true
@@ -141,6 +147,11 @@ function main()
             s |> client => begin
                 @debug "Sent to $client."
                 s = @async send_to(send_sock, send_channel, send_to_port)
+            end
+            w |> w => begin
+                if length(clientlist) == 0
+                    w = @async print_waiting(5)
+                end
             end
         end
     end
