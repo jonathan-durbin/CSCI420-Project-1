@@ -14,8 +14,8 @@ function main()
 
     while true
         @select begin
-            t |> r => begin
-                        from,data = r
+            t |> t => begin
+                        from,data = t
                         println("$(from.host): $(String(copy(data)))")
                         t = @async recvfrom(sock)
                       end
@@ -23,8 +23,8 @@ function main()
                         println("5 seconds have passed.")
                         d = @async sleep(5)
                       end
-            k |> s => begin
-                        println("You wrote: $(s)")
+            k |> k => begin
+                        println("You wrote: $(k)")
                         k =  @async readline()
                       end
                 end
