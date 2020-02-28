@@ -31,3 +31,12 @@ Finished in 247.346 seconds.
 Total bytes sent: 213698, total bytes received: 4389408.
 Average bandwidth: 0.14887576000667946 Mbits/sec.
 
+Running on 7 machines (small.scene):
+Finished in 62.87 seconds.
+Total bytes sent: 235360, total bytes received: 4389432.
+Average bandwidth: 0.5884288120510885 Mbits/sec.
+
+Running on one machine (small.scene):
+Finished in 195.485 seconds.
+Total bytes sent: 212080, total bytes received: 4389408.
+Average bandwidth: 0.18830377015501557 Mbits/sec.
