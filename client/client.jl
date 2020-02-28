@@ -10,8 +10,8 @@ include("../julia/raytracer.jl")
 using .RayTracer
 
 
-global bytes_recv = 0
-global bytes_sent = 0
+bytes_recv = 0
+bytes_sent = 0
 
 struct Server
     host::IPv4
@@ -24,7 +24,7 @@ function receive_from(
     )
     resp = recvfrom(recv_socket)
     server, r = Server(resp[1].host), resp[2]
-    bytes_recv += length(r)
+    global bytes_recv += length(r)
     @debug "Got $(length(r)) bytes from $server."
     # if we receive from a server, then put the data in the channel for the corresponding server
     put!(recv_channels[server], r)
@@ -38,7 +38,7 @@ function send_to(
         send_to_port::Int
     )
     server, to_send = take!(send_channel)
-    bytes_sent += length(to_send)
+    global bytes_sent += length(to_send)
     send(send_socket, server.host, send_to_port, to_send)
     return server
 end
