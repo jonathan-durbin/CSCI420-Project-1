@@ -323,7 +323,7 @@ if abspath(PROGRAM_FILE) == @__FILE__
         end
     elseif length(ARGS) == 1 && ARGS[1] == "--demo"
         bmp = render(Viewport(400, 400), demoScene)
-        writePPM("demo.ppm", bmp)
+        writePPM("demo.ppm", reshape(bmp, (400, 400, 3)))
     else
         println("Usage: raytracer [scene file] [output ppm]")
     end
