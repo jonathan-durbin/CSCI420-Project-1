@@ -219,7 +219,7 @@ function main()
     close(send_socket)
     final_image = permutedims(reshape(final_image, view.height, view.width, 3), [2, 1, 3])
     writePPM(ARGS[3], final_image)
-    println("Finished in $(round(time() - start_time, digits=3)) seconds.")
+    println("\nFinished in $(round(time() - start_time, digits=3)) seconds.")
     println("Total bytes sent: $bytes_sent, total bytes received: $bytes_recv.")
     println("Average bandwidth: $((bytes_sent + bytes_recv)*8/(time() - start_time) / 1E6) Mbits/sec.")
     return
