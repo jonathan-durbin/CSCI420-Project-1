@@ -110,9 +110,11 @@ function handle(
     end
 end
 
-function print_waiting(n::Int)
+function print_waiting(n::Int, b::Bool)
     sleep(n)
-    println("Waiting...")
+    if b
+        println("Waiting...")
+    end
 end
 
 
@@ -130,7 +132,7 @@ function main()
 
     r = @async receive_from(recv_sock, recv_channels, clientlist)
     s = @async send_to(send_sock, send_channel, send_to_port)
-    w = @async print_waiting(5)
+    w = @async print_waiting(5, true)
 
     @info "Main loop starting."
     while true
@@ -148,10 +150,9 @@ function main()
                 @debug "Sent to $client."
                 s = @async send_to(send_sock, send_channel, send_to_port)
             end
-            w |> w => begin
-                if length(clientlist) == 0
-                    w = @async print_waiting(5)
-                end
+            w => begin
+                    b = length(clientlist) == 0
+                    w = @async print_waiting(5, b)
             end
         end
     end
