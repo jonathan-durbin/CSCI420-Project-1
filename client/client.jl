@@ -189,6 +189,7 @@ function main()
     recv_channels = Dict(server => Channel(Inf) for server in server_list)
     send_channel = Channel{Tuple{Server, Array{UInt8,1}}}(Inf)
 
+    @info "Starting."
     r = @async receive_from(recv_socket, recv_channels)
     s = @async send_to(send_socket, send_channel, send_to_port)
     u = @async update_final_image(final_image, final_image_channel)
@@ -198,7 +199,6 @@ function main()
         for server in server_list
     ]
 
-    @info "Starting."
     start_time = time()
     while any(ismissing, final_image)  # while image is not completed
         @select begin
