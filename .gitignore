@@ -1,4 +1,4 @@
 *.png
 SERVER_LIST
 server/raytracer.jl
-writeup.md
+writeup.*
